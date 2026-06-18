@@ -24,12 +24,39 @@ abstract class Meta_Datastore extends Key_Value_Datastore {
 	protected function get_storage_array( Field $field, $storage_key_patterns ) {
 		global $wpdb;
 
+		$object_id   = intval( $this->get_object_id() );
+		$cache_group = $this->get_meta_type() . '_meta';
+		$cached_meta = wp_cache_get( $object_id, $cache_group );
+
+		// WP's object cache (group: post_meta / term_meta / etc.) is populated by
+		// update_meta_cache() / _prime_post_caches(). It stores the COMPLETE set of meta
+		// for the object as raw DB strings — same format as wpdb->get_results(). A cache
+		// miss returns false; a hit returns an array (possibly empty for objects with no meta).
+		// Checking is_array() distinguishes a hit (full set present) from a miss (false).
+		if ( is_array( $cached_meta ) ) {
+			$storage_array = array();
+			foreach ( $cached_meta as $meta_key => $meta_values ) {
+				if ( $this->key_toolset->storage_key_matches_any_pattern( $meta_key, $storage_key_patterns ) ) {
+					foreach ( $meta_values as $meta_value ) {
+						$storage_array[] = (object) array(
+							'key'   => $meta_key,
+							'value' => $meta_value,
+						);
+					}
+				}
+			}
+			usort( $storage_array, function( $a, $b ) {
+				return strcmp( $a->key, $b->key );
+			} );
+			return apply_filters( 'carbon_fields_datastore_storage_array', $storage_array, $this, $storage_key_patterns );
+		}
+
 		$storage_key_comparisons = $this->key_toolset->storage_key_patterns_to_sql( '`meta_key`', $storage_key_patterns );
 
 		$storage_array = $wpdb->get_results( '
 			SELECT `meta_key` AS `key`, `meta_value` AS `value`
 			FROM ' . $this->get_table_name() . '
-			WHERE `' . $this->get_table_field_name() . '` = ' . intval( $this->get_object_id() ) . '
+			WHERE `' . $this->get_table_field_name() . '` = ' . $object_id . '
 				AND ' . $storage_key_comparisons . '
 			ORDER BY `meta_key` ASC
 		' );
