@@ -28,8 +28,11 @@ abstract class Meta_Datastore extends Key_Value_Datastore {
 		$cache_group = $this->get_meta_type() . '_meta';
 		$cached_meta = wp_cache_get( $object_id, $cache_group );
 
-		// WP object cache is populated when _prime_post_caches() has run for this object.
-		// Reading from it eliminates one SQL query per CF field call on the same request.
+		// WP's object cache (group: post_meta / term_meta / etc.) is populated by
+		// update_meta_cache() / _prime_post_caches(). It stores the COMPLETE set of meta
+		// for the object as raw DB strings — same format as wpdb->get_results(). A cache
+		// miss returns false; a hit returns an array (possibly empty for objects with no meta).
+		// Checking is_array() distinguishes a hit (full set present) from a miss (false).
 		if ( is_array( $cached_meta ) ) {
 			$storage_array = array();
 			foreach ( $cached_meta as $meta_key => $meta_values ) {
